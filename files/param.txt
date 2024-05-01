@@ -1,0 +1,31 @@
+----Avaza Api Parameters----
+rg = RG-Pipeline
+serviceName = ApimInstancePeabody
+
+apiId = avaza-api-documentation
+cloneapiId = 61af65fda40794dbda161cb3
+
+path = avaza
+clonepath = avaza-clone
+
+specificationPath = https://github.com/APIs-guru/openapi-directory/blob/main/APIs/avaza.com/v1/swagger.yaml
+			D:\Peabody\POCs\swagger.yaml
+
+subscriptionId = c57e8b11-5062-4161-a5e4-0f9ede51c20e
+specificationFormat = "OpenApi"
+
+----Echo Api Parameters----
+rg = RG-Pipeline
+serviceName = ApimInstancePeabody
+
+apiId = echo-api
+cloneapiId = 61ae4fc34dd70364a4611af4
+
+path = echo
+clonepath = echo-clone
+
+specPath = D:\Peabody\POCs\echo.yaml
+
+
+
+

@@ -1,0 +1,89 @@
+parameters:
+  devops_artefact_name: DevOps
+  namespace: ''
+  release_name: ''
+  release_version: ''
+  apim_resource_group_name: ''
+  apim_service_name: ''
+  apim_path: ''
+  apim_products: []
+  apim_policy: false
+  apim_policy_path: ''
+  apim_subscription_id: ''
+steps:
+  - bash: |
+      # Check deployment rollout status every 10 seconds (max 5 minutes) until complete.
+      ATTEMPTS=0
+      ROLLOUT_STATUS_CMD="kubectl rollout status --namespace=${{ parameters.namespace }} deployments/${{ parameters.release_name }}"
+      until $ROLLOUT_STATUS_CMD || [ $ATTEMPTS -eq 30 ]; do
+        $ROLLOUT_STATUS_CMD
+        ATTEMPTS=$((attempts + 1))
+        sleep 10
+      done
+
+      container=$(kubectl get pods --namespace=${{ parameters.namespace }} --selector=release=${{ parameters.release_name }},version=${{ parameters.release_version }} -o jsonpath='{.items[0].metadata.name}')
+      echo "container: $container"
+      service=$(kubectl get service --namespace=${{ parameters.namespace }} --selector=release=${{ parameters.release_name }} -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
+      echo "Service IP: $service"
+      swagger=$(kubectl exec --namespace=${{ parameters.namespace }} ${container} -- curl -s localhost/swagger/all/swagger.json)
+      echo $swagger > ${{parameters.release_name}}-swagger.json
+      echo "--------- swagger -----------"
+      cat ${{parameters.release_name}}-swagger.json
+      echo "--------- swagger -----------"
+      echo "##vso[task.setvariable variable=SERVICE_URL]http://${service}"
+    displayName: 'Kubectl: get deployment properties'
+    workingDirectory: $(Pipeline.Workspace)
+    failOnStderr: true
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: $(Pipeline.Workspace)/${{parameters.release_name}}-swagger.json
+      artifactName: ${{parameters.release_name}}-swagger-$(System.JobAttempt)
+
+  - task: PowerShell@2
+    displayName: 'Update APIM API definition - ${{ parameters.release_name }}'
+    inputs:
+      targetType: 'filePath'
+      filePath: $(Pipeline.Workspace)/${{ parameters.devops_artefact_name }}/Azure/import-apim-api.ps1
+      arguments: >
+        -resourceGroupName ${{ parameters.apim_resource_group_name }}
+        -serviceName ${{ parameters.apim_service_name }}
+        -apiId ${{ parameters.release_name }}
+        -cloneApiId ${{ parameters.release_name }}
+        -apiPath ${{ parameters.apim_path }}
+        -cloneApiPath ${{ parameters.apim_path }}
+        -specificationPath ${{ parameters.release_name }}-swagger.json
+        -apimsubscriptionid ${{ parameters.apim_subscription_id }}
+      workingDirectory: $(Pipeline.Workspace)
+      failOnStderr: true
+
+  - ${{ each product in parameters.apim_products }}:
+      - task: PowerShell@2
+        displayName: 'Add to APIM product - ${{ product }}'
+        inputs:
+          targetType: 'filePath'
+          filePath: $(Pipeline.Workspace)/${{ parameters.devops_artefact_name }}/Azure/set-apim-api-product-group.ps1
+          arguments: >
+            -resourceGroupName ${{ parameters.apim_resource_group_name }}
+            -serviceName ${{ parameters.apim_service_name }}
+            -apiId ${{ parameters.release_name }}
+            -cloneApiId ${{ parameters.release_name }}
+            -ProductId ${{ product }}
+            -apimsubscriptionid ${{ parameter.apim_subscription_id }}
+          workingDirectory: $(Pipeline.Workspace)
+          failOnStderr: true
+
+  - ${{ if eq(parameters.apim_policy, true) }}:
+      - task: PowerShell@2
+        displayName: 'Update API policy - ${{ parameters.release_name }}'
+        inputs:
+          targetType: 'filePath'
+          filePath: $(Pipeline.Workspace)/${{ parameters.devops_artefact_name }}/Azure/set-apim-api-policy.ps1
+          arguments: >
+            -resourceGroupName ${{ parameters.apim_resource_group_name }}
+            -serviceName ${{ parameters.apim_service_name }}
+            -apiId ${{ parameters.release_name }}
+            -cloneApiId ${{ parameters.release_name }}
+            -policyFilePath ${{ parameters.apim_policy_path }}
+          workingDirectory: $(Pipeline.Workspace)
+          failOnStderr: true
